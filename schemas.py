@@ -429,6 +429,15 @@ class EventCreate(BaseModel):
     status: EventStatus = EventStatus.pending
 
 
+class EventUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    description: str | None = None
+    proposed_date: datetime | None = None
+    target_venue_id: int | None = None
+
+
 class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
