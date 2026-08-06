@@ -1,9 +1,10 @@
 .venv/
+.git/
 __pycache__/
 *.pyc
-*.pyo
-.env
-.env.*
-!.env.example
 media/
 event_platform.db
+.env
+Dockerfile
+.dockerignore
+README.md

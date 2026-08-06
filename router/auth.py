@@ -1,3 +1,11 @@
+"""Authentication endpoints: registration, email verification, login,
+profile management, and logout.
+
+Registration creates an unverified account and queues a verification
+email. Login sets the signed ``auth_token`` cookie and the readable
+``csrf_token`` cookie used by the CSRF middleware. All session handling
+is cookie-based.
+"""
 import secrets
 from typing import Union
 
@@ -12,7 +20,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
-from config import settings
+from core.settings import settings
 from database import get_db
 from email_service import send_verification_email
 from models import Customer, VenueManager
@@ -48,6 +56,24 @@ def _register_user(
     email: str,
     password: str,
 ):
+    """Create a new unverified account and queue a verification email.
+
+    Args:
+        db: Database session.
+        background_tasks: FastAPI background tasks (verification email).
+        model: Either ``Customer`` or ``VenueManager``.
+        first_name: User's first name.
+        middle_name: User's middle name, if any.
+        last_name: User's last name.
+        email: User's email (normalized to lowercase).
+        password: Plaintext password to hash.
+
+    Returns:
+        The newly created user row.
+
+    Raises:
+        HTTPException: 400 if the email is already registered.
+    """
     email = email.lower()
     if db.query(Customer).filter(Customer.email == email).first() or db.query(
         VenueManager
@@ -79,6 +105,13 @@ def _register_user(
 
 
 def _set_auth_cookies(response: Response, session_id: str, user):
+    """Set the signed auth cookie and the readable CSRF cookie.
+
+    Args:
+        response: Response to attach the cookies to.
+        session_id: Current server-side session id.
+        user: The authenticated user (customer or venue manager).
+    """
     access_token = create_access_token(session_id, user.id, user.role)
     refresh_token = create_refresh_token(session_id, user.id, user.role)
     auth_token = create_auth_token(access_token, refresh_token)
@@ -95,7 +128,7 @@ def _set_auth_cookies(response: Response, session_id: str, user):
     response.set_cookie(
         key=settings.CSRF_TOKEN_COOKIE,
         value=csrf_token,
-        httponly=True,
+        httponly=False,
         samesite="lax",
         secure=False,
         path="/",
@@ -110,6 +143,23 @@ def _login_user(
     email: str,
     password: str,
 ):
+    """Authenticate a user and set the session cookies.
+
+    Args:
+        db: Database session.
+        response: Response to attach the auth cookies to.
+        background_tasks: FastAPI background tasks (re-sent verification).
+        model: Either ``Customer`` or ``VenueManager``.
+        email: User's email.
+        password: Plaintext password.
+
+    Returns:
+        The authenticated user row.
+
+    Raises:
+        HTTPException: 400 on unknown email or wrong password; 403 with a
+            re-sent verification link when the email is unverified.
+    """
     email = email.lower()
     user = db.query(model).filter(model.email == email).first()
     if not user:
@@ -153,6 +203,19 @@ def register_customer(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
+    """Register a new customer account.
+
+    Args:
+        payload: Customer registration data.
+        background_tasks: FastAPI background tasks.
+        db: Database session.
+
+    Returns:
+        CustomerOut: The created customer.
+
+    Raises:
+        HTTPException: 400 if the email is already registered.
+    """
     return _register_user(
         db,
         background_tasks,
@@ -175,6 +238,19 @@ def register_venue_manager(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
+    """Register a new venue-manager account.
+
+    Args:
+        payload: Venue-manager registration data.
+        background_tasks: FastAPI background tasks.
+        db: Database session.
+
+    Returns:
+        VenueManagerOut: The created venue manager.
+
+    Raises:
+        HTTPException: 400 if the email is already registered.
+    """
     return _register_user(
         db,
         background_tasks,
@@ -198,6 +274,17 @@ def login_customer(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
+    """Log in a customer and set the auth + CSRF cookies.
+
+    Args:
+        payload: Login credentials.
+        response: Response receiving the session cookies.
+        background_tasks: FastAPI background tasks.
+        db: Database session.
+
+    Returns:
+        CustomerOut: The authenticated customer.
+    """
     return _login_user(
         db, response, background_tasks, Customer, payload.email, payload.password
     )
@@ -214,6 +301,17 @@ def login_venue_manager(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
+    """Log in a venue manager and set the auth + CSRF cookies.
+
+    Args:
+        payload: Login credentials.
+        response: Response receiving the session cookies.
+        background_tasks: FastAPI background tasks.
+        db: Database session.
+
+    Returns:
+        VenueManagerOut: The authenticated venue manager.
+    """
     return _login_user(
         db,
         response,
@@ -226,6 +324,19 @@ def login_venue_manager(
 
 @router.get("/verify-email", status_code=status.HTTP_200_OK)
 def verify_email(token: str, db: Session = Depends(get_db)):
+    """Mark a user's email as verified using the emailed token.
+
+    Args:
+        token: Signed verification JWT.
+        db: Database session.
+
+    Returns:
+        dict: Success message.
+
+    Raises:
+        HTTPException: 400 for an invalid token; 404 if the user does not
+            exist.
+    """
     try:
         payload = decode_token(token)
     except Exception:
@@ -261,6 +372,17 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=Union[CustomerOut, VenueManagerOut])
 def me(request: Request):
+    """Return the currently authenticated user's profile.
+
+    Args:
+        request: Incoming request with ``auth_user`` set by the middleware.
+
+    Returns:
+        CustomerOut | VenueManagerOut: The authenticated user.
+
+    Raises:
+        HTTPException: 401 when not authenticated.
+    """
     auth_user = getattr(request.state, "auth_user", None)
     if auth_user is None:
         raise HTTPException(
@@ -276,6 +398,20 @@ def update_me(
     request: Request,
     db: Session = Depends(get_db),
 ):
+    """Update the authenticated user's profile fields.
+
+    Args:
+        payload: Fields to update (all optional).
+        request: Incoming request with the authenticated user.
+        db: Database session.
+
+    Returns:
+        CustomerOut | VenueManagerOut: The updated user.
+
+    Raises:
+        HTTPException: 401 when not authenticated; 404 if the user no
+            longer exists.
+    """
     auth_user = getattr(request.state, "auth_user", None)
     if auth_user is None:
         raise HTTPException(
@@ -311,6 +447,21 @@ def update_me(
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 def logout(request: Request, db: Session = Depends(get_db)):
+    """Log out the authenticated user and clear the session cookies.
+
+    Invalidates the server-side session id and expires both the auth and
+    CSRF cookies.
+
+    Args:
+        request: Incoming request with the authenticated user.
+        db: Database session.
+
+    Returns:
+        Response: Empty response with cleared cookies.
+
+    Raises:
+        HTTPException: 401 when not authenticated.
+    """
     auth_user = getattr(request.state, "auth_user", None)
     if auth_user is None:
         raise HTTPException(

@@ -1,13 +1,30 @@
+"""Email delivery for account verification.
+
+Sends the email-verification message via SMTP. When SMTP is not
+configured the service falls back to logging the verification link so
+development flows can still complete.
+"""
 import logging
 import smtplib
 from email.message import EmailMessage
 
-from config import settings
+from core.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
 def send_verification_email(to_email: str, first_name: str, verification_url: str) -> None:
+    """Send an email-verification message to a newly registered user.
+
+    Args:
+        to_email: Recipient email address.
+        first_name: Recipient's first name, used in the greeting.
+        verification_url: Signed verification link to include in the email.
+
+    Returns:
+        None. Failures are logged, never raised, so registration is not
+        blocked by email delivery problems.
+    """
     if not settings.SMTP_HOST:
         logger.warning(
             "SMTP not configured - verification link for %s: %s",

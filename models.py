@@ -1,3 +1,8 @@
+"""SQLAlchemy ORM models and enumerations for the HappenHub platform.
+
+Defines the two user types (customers and venue managers), venues, events,
+votes, and the shared mixins/enums used across the schema.
+"""
 from datetime import datetime
 from enum import Enum as PyEnum
 
@@ -18,10 +23,14 @@ from database import Base
 
 
 class Roles(str, PyEnum):
+    """User roles supported by the platform."""
+
     CUSTOMER = "customer"
     VENUE_MANAGER = "venue_manager"
 
 class TimestampMixin:
+    """Mixin adding ``created_at`` and ``updated_at`` timestamp columns."""
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -34,6 +43,8 @@ class TimestampMixin:
 
 
 class UserMixin:
+    """Mixin with the shared identity and credential columns for both user types."""
+
     first_name: Mapped[str] = mapped_column(String(50), nullable=False)
     middle_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
     last_name: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -50,6 +61,8 @@ class UserMixin:
 
 
 class Customer(TimestampMixin, UserMixin, Base):
+    """A registered customer who proposes events and casts votes."""
+
     __tablename__ = "customers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -62,6 +75,8 @@ class Customer(TimestampMixin, UserMixin, Base):
 
 
 class VenueManager(TimestampMixin, UserMixin, Base):
+    """A venue manager who manages venues and approves or rejects events."""
+
     __tablename__ = "venue_managers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -78,6 +93,8 @@ class VenueManager(TimestampMixin, UserMixin, Base):
 
 
 class VenuePurpose(str, PyEnum):
+    """Catalog of venue purposes used to constrain the valid venue types."""
+
     corporate_and_business = "Corporate and Business"
     weddings_and_celebration = "Weddings and Celebration"
     entertainment = "Entertainment"
@@ -95,6 +112,8 @@ class VenuePurpose(str, PyEnum):
 
 
 class VenueType(str, PyEnum):
+    """Catalog of venue types, each grouped under a venue purpose."""
+
     conference_center = "Conference Center"
     convention_center = "Convention Center"
     meeting_room = "Meeting Room"
@@ -188,6 +207,8 @@ class VenueType(str, PyEnum):
 
 
 class VenueStatus(str, PyEnum):
+    """Operational status of a venue."""
+
     available = "available"
     reserved = "reserved"
     booked = "booked"
@@ -195,10 +216,20 @@ class VenueStatus(str, PyEnum):
 
 
 def _enum_values(enum_class):
+    """Return the member values of an enum for SQLAlchemy ``Enum`` storage.
+
+    Args:
+        enum_class: A ``str``-based enum class.
+
+    Returns:
+        list[str]: The raw string values of the enum members.
+    """
     return [member.value for member in enum_class]
 
 
 class Venue(TimestampMixin, Base):
+    """A bookable venue owned by a venue manager."""
+
     __tablename__ = "venues"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -243,12 +274,16 @@ class Venue(TimestampMixin, Base):
 
 
 class EventStatus(str, PyEnum):
+    """Lifecycle status of a proposed event."""
+
     pending = "pending"
     approved = "approved"
     rejected = "rejected"
 
 
 class Event(TimestampMixin, Base):
+    """An event proposed by a customer for a target venue."""
+
     __tablename__ = "events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -281,11 +316,15 @@ class Event(TimestampMixin, Base):
 
 
 class VoteStatus(str, PyEnum):
+    """Ballot status of a vote."""
+
     ballot_open = "ballot_open"
     ballot_close = "ballot_close"
 
 
 class Vote(Base):
+    """A single vote cast by a customer on a pending event."""
+
     __tablename__ = "votes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

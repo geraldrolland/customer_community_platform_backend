@@ -1,3 +1,9 @@
+"""Media upload endpoints for venue images.
+
+Accepts up to five image files (jpg/jpeg/png) per request, stores them
+under the media directory with random names, and returns their static
+URLs. Requires a venue-manager session.
+"""
 import uuid
 from pathlib import Path
 
@@ -17,6 +23,19 @@ MAX_IMAGES = 5
     dependencies=[Depends(RequirePermission(roles=[Roles.VENUE_MANAGER]))],
 )
 async def upload_images(images: list[UploadFile] = File(...)):
+    """Upload one or more venue images and return their static URLs.
+
+    Args:
+        images: Multipart files, each with a jpg/jpeg/png extension and
+            non-empty content. At most ``MAX_IMAGES`` allowed.
+
+    Returns:
+        list[str]: Static media URLs for the stored files.
+
+    Raises:
+        HTTPException: 400 when too many files are sent, an extension is
+            unsupported, or a file is empty.
+    """
     if len(images) > MAX_IMAGES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

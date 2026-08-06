@@ -1,3 +1,9 @@
+"""Pydantic schemas for request validation and response serialization.
+
+Defines the auth payloads (customer/venue-manager registration, login,
+profile updates), the venue/event/vote models, and the curated venue
+purpose-to-type mapping used to validate venue submissions.
+"""
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, model_validator
@@ -49,8 +55,8 @@ VenuePurposeMapping = {
         "Casino",
     ],
     "Sport": [
-        "Stadium", 
-        "Arena", 
+        "Stadium",
+        "Arena",
         "Sports Complex",
         "Gymnasium",
         "Indoor Sports Hall",
@@ -154,6 +160,8 @@ for _purpose, _venue_types in VenuePurposeMapping.items():
 
 
 class CustomerBase(BaseModel):
+    """Shared customer identity fields."""
+
     first_name: str
     middle_name: str | None = None
     last_name: str
@@ -161,17 +169,22 @@ class CustomerBase(BaseModel):
 
 
 class CustomerCreate(CustomerBase):
+    """Registration payload for customers, requiring matching passwords."""
+
     password: str
     confirm_password: str
 
     @model_validator(mode="after")
     def check_passwords_match(self):
+        """Ensure the password and confirmation are identical."""
         if self.password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
 
 
 class CustomerOut(CustomerBase):
+    """Customer serialized in API responses."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -182,6 +195,8 @@ class CustomerOut(CustomerBase):
 
 
 class VenueManagerBase(BaseModel):
+    """Shared venue-manager identity fields."""
+
     first_name: str
     middle_name: str | None = None
     last_name: str
@@ -189,17 +204,22 @@ class VenueManagerBase(BaseModel):
 
 
 class VenueManagerCreate(VenueManagerBase):
+    """Registration payload for venue managers, requiring matching passwords."""
+
     password: str
     confirm_password: str
 
     @model_validator(mode="after")
     def check_passwords_match(self):
+        """Ensure the password and confirmation are identical."""
         if self.password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
 
 
 class VenueManagerOut(VenueManagerBase):
+    """Venue manager serialized in API responses."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -210,6 +230,8 @@ class VenueManagerOut(VenueManagerBase):
 
 
 class LoginRequest(BaseModel):
+    """Login payload; rejects unknown extra fields."""
+
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
@@ -217,6 +239,8 @@ class LoginRequest(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
+    """Optional profile-update payload with password-confirmation rules."""
+
     model_config = ConfigDict(extra="forbid")
 
     first_name: str | None = None
@@ -227,6 +251,7 @@ class UpdateProfileRequest(BaseModel):
 
     @model_validator(mode="after")
     def check_password_fields(self):
+        """Validate password/confirm_password are paired and equal."""
         if self.password is not None and self.confirm_password is None:
             raise ValueError(
                 "confirm_password must be provided when password is provided"
@@ -243,11 +268,15 @@ class UpdateProfileRequest(BaseModel):
 
 
 class Accessibilty(BaseModel):
+    """Accessibility flags for a venue."""
+
     model_config = ConfigDict(extra="forbid")
     wheel_chair_accessible: bool
     elevator: bool
 
 class Contact(BaseModel):
+    """Venue contact person details."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -255,6 +284,8 @@ class Contact(BaseModel):
     email: EmailStr
 
 class ParkingAvailability(BaseModel):
+    """Parking information; enforces consistency with the availability flag."""
+
     model_config = ConfigDict(extra="forbid")
     available: bool
     capacity: int | None = None
@@ -263,6 +294,7 @@ class ParkingAvailability(BaseModel):
 
     @model_validator(mode="after")
     def check_parking_fields(self):
+        """Require capacity/price/hours only when parking is available."""
         if self.available is False and  any([self.capacity, self.price, self.hours]):
             raise ValueError(
                 "capacity, price, and hours must be None when available is False"
@@ -276,12 +308,16 @@ class ParkingAvailability(BaseModel):
 
 
 class OperatingHours(BaseModel):
+    """Weekly operating schedule for a venue."""
+
     model_config = ConfigDict(extra="forbid")
     days: list[str]
     opening_time: str
     closing_time: str
-    
+
 class VenueCreate(BaseModel):
+    """Venue creation payload with purpose/type and amenity validation."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -305,6 +341,7 @@ class VenueCreate(BaseModel):
 
     @model_validator(mode="after")
     def check_amenities(self):
+        """Reject amenities outside the curated catalog."""
         for amenity in self.amenities:
             if amenity not in Amenities:
                 raise ValueError(f"Invalid amenity: {amenity}")
@@ -312,6 +349,7 @@ class VenueCreate(BaseModel):
 
     @model_validator(mode="after")
     def check_image_urls(self):
+        """Require between 3 and 5 image URLs."""
         if len(self.images) < 3:
             raise ValueError("At least 3 images are required")
         if len(self.images) > 5:
@@ -320,6 +358,7 @@ class VenueCreate(BaseModel):
 
     @model_validator(mode="after")
     def check_purpose_and_venue_type(self):
+        """Ensure the venue type belongs to the selected purpose."""
         purpose = self.purpose
         venue_type = self.venue_type
 
@@ -334,8 +373,10 @@ class VenueCreate(BaseModel):
 
 
 class VenueUpdate(BaseModel):
+    """Venue update payload; all fields optional."""
+
     model_config = ConfigDict(extra="forbid")
-    
+
     name: str | None = None
     description: str | None = None
     address: str | None = None
@@ -357,6 +398,7 @@ class VenueUpdate(BaseModel):
 
     @model_validator(mode="after")
     def check_amenities(self):
+        """Reject amenities outside the curated catalog when provided."""
         if self.amenities is not None:
             for amenity in self.amenities:
                 if amenity not in Amenities:
@@ -365,6 +407,7 @@ class VenueUpdate(BaseModel):
 
     @model_validator(mode="after")
     def check_image_urls(self):
+        """Require 3-5 image URLs when images are being replaced."""
         if self.images is not None:
             if len(self.images) < 3:
                 raise ValueError("At least 3 images are required")
@@ -374,6 +417,7 @@ class VenueUpdate(BaseModel):
 
     @model_validator(mode="after")
     def check_purpose_and_venue_type(self):
+        """Require purpose and venue type to be updated together and be compatible."""
         purpose = self.purpose
         venue_type = self.venue_type
 
@@ -381,7 +425,7 @@ class VenueUpdate(BaseModel):
             raise ValueError("venue_type must be provided when purpose is provided")
         if venue_type is not None and purpose is None:
             raise ValueError("purpose must be provided when venue_type is provided")
-        
+
         if purpose and venue_type:
             valid_venue_types = VenuePurposeMapping.get(purpose.value, [])
             if venue_type.value not in valid_venue_types:
@@ -393,6 +437,8 @@ class VenueUpdate(BaseModel):
 
 
 class VenueOut(BaseModel):
+    """Venue serialized in API responses."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -420,6 +466,8 @@ class VenueOut(BaseModel):
 
 
 class EventCreate(BaseModel):
+    """Event proposal payload; defaults to ``pending`` status."""
+
     model_config = ConfigDict(extra="forbid")
 
     title: str
@@ -430,6 +478,8 @@ class EventCreate(BaseModel):
 
 
 class EventUpdate(BaseModel):
+    """Event update payload; all fields optional."""
+
     model_config = ConfigDict(extra="forbid")
 
     title: str | None = None
@@ -439,6 +489,8 @@ class EventUpdate(BaseModel):
 
 
 class EventOut(BaseModel):
+    """Event serialized in API responses."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -454,6 +506,8 @@ class EventOut(BaseModel):
 
 
 class VoteOut(BaseModel):
+    """Vote serialized in API responses."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int

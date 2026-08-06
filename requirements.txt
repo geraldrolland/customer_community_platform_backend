@@ -7,3 +7,5 @@ PyJWT
 python-dotenv
 itsdangerous
 python-multipart
+cachetools
+pydantic-settings
