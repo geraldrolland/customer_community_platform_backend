@@ -28,7 +28,7 @@ session authentication, CSRF protection, and an in-memory response cache.
 
 ## Features
 
-- **Role-based accounts** — customers and venue managers with email verification
+- **Role-based accounts** — customers and venue managers
 - **Venue management** — venue managers create, update, and delete venues
 - **Venue lifecycle** — setting a venue's status to `closed` rejects every
   event assigned to it and closes their ballots
@@ -71,7 +71,7 @@ backend/
 │   ├── csrf_middleware.py   # double-submit CSRF check
 │   └── request_logger_middleware.py  # per-request logging
 ├── router/
-│   ├── auth.py              # register / verify / login / me / logout
+│   ├── auth.py              # register / login / me / logout
 │   ├── venue.py             # venue CRUD + catalog
 │   ├── event.py             # event proposals + moderation
 │   ├── vote.py              # voting endpoints
@@ -81,7 +81,6 @@ backend/
 ├── security.py              # JWT, cookies, hashing helpers
 ├── cache.py                 # thread-safe TTL cache helpers
 ├── database.py              # engine, session factory, Base
-├── email_service.py         # SMTP verification emails
 ├── dependencies.py          # role/permission dependency
 ├── main.py                  # application entrypoint
 ├── smoke_test.py            # end-to-end smoke test
@@ -236,18 +235,9 @@ are loaded from the environment and an optional `.env` file (see
 | Variable                             | Type        | Default                                       | Description                                  |
 |--------------------------------------|-------------|-----------------------------------------------|----------------------------------------------|
 | `APP_NAME`                           | string      | `HappenHub`                                   | FastAPI application title (shown in `/docs`) |
-| `SMTP_HOST`                          | string      | *(empty)*                                     | SMTP server; empty disables email sending    |
-| `SMTP_PORT`                          | int         | `587`                                         | SMTP port                                    |
-| `SMTP_USER`                          | string      | *(empty)*                                     | SMTP username / login                        |
-| `SMTP_PASS`                          | string      | *(empty)*                                     | SMTP password                                |
-| `SMTP_FROM`                          | string      | *(empty)*                                     | From address (falls back to `SMTP_USER`)     |
-| `EMAIL_VERIFICATION_BASE_URL`        | string      | `http://localhost:3000/verify-email`          | Base URL for verification links              |
-| `JWT_SECRET`                         | string      | dev secret                                    | **Change in production** — signs all JWTs    |
-| `JWT_ALGORITHM`                      | string      | `HS256`                                       | JWT signing algorithm                        |
 | `COOKIE_SIGNING_SECRET`              | string      | defaults to `JWT_SECRET`                      | Signs the auth cookie value                  |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`        | int         | `7`                                           | Access-token lifetime (minutes)              |
 | `REFRESH_TOKEN_EXPIRE_DAYS`          | int         | `7`                                           | Refresh-token lifetime (days)                |
-| `EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES` | int    | `2`                                           | Verification-token lifetime (minutes)        |
 | `AUTH_TOKEN_COOKIE`                  | string      | `auth_token`                                  | Name of the signed session cookie            |
 | `CSRF_TOKEN_COOKIE`                  | string      | `csrf_token`                                  | Name of the CSRF cookie                      |
 | `CORS_ORIGINS`                       | JSON array  | `["http://localhost:3000"]`                   | Allowed browser origins (credentials mode)   |
@@ -262,10 +252,9 @@ Base URL: `http://localhost:8000` — interactive docs at `/docs`.
 ### Authentication flow
 
 1. `POST /api/auth/register/customer` or `POST /api/auth/register/venue-manager` → 201
-2. Open the emailed verification link → `GET /api/auth/verify-email?token=...` → 200
-3. `POST /api/auth/login/customer` or `POST /api/auth/login/venue-manager` → 200
+2. `POST /api/auth/login/customer` or `POST /api/auth/login/venue-manager` → 200
    (sets the `auth_token` and `csrf_token` cookies)
-4. Use the session cookie automatically; send `x-csrf-token` header on writes
+3. Use the session cookie automatically; send `x-csrf-token` header on writes
 
 ### Endpoints
 
@@ -273,7 +262,6 @@ Base URL: `http://localhost:8000` — interactive docs at `/docs`.
 |--------|-----------------------------|--------------|--------------------------------------|
 | POST   | `/api/auth/register/customer` | public       | Register a customer                 |
 | POST   | `/api/auth/register/venue-manager` | public | Register a venue manager           |
-| GET    | `/api/auth/verify-email`    | public       | Verify email via emailed token       |
 | POST   | `/api/auth/login/customer`  | public       | Customer login (sets cookies)        |
 | POST   | `/api/auth/login/venue-manager` | public    | Venue-manager login (sets cookies)   |
 | GET    | `/api/auth/me`              | authenticated| Current user profile                 |
@@ -353,7 +341,7 @@ payloads, never ORM objects.
 
 ## Testing
 
-An end-to-end smoke test walks the full user journey (register → verify →
+An end-to-end smoke test walks the full user journey (register →
 login → venue → event → vote → approve → negative cases).
 
 Requires the backend to be running (Docker container or local uvicorn) and the
@@ -365,7 +353,7 @@ pip install requests
 python smoke_test.py
 ```
 
-Expected output ends with `43/43 checks passed` (exit code 0).
+Expected output ends with `42/42 checks passed` (exit code 0).
 
 ---
 

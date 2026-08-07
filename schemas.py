@@ -210,7 +210,6 @@ class CustomerOut(CustomerBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    is_email_verified: bool
     role: str
     created_at: datetime
     updated_at: datetime
@@ -245,7 +244,6 @@ class VenueManagerOut(VenueManagerBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    is_email_verified: bool
     role: str
     created_at: datetime
     updated_at: datetime

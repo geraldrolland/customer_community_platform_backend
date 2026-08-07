@@ -25,21 +25,11 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "HappenHub"
 
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASS: str = ""
-    SMTP_FROM: str = ""
-
-    EMAIL_VERIFICATION_BASE_URL: str = "http://localhost:3000/verify-email"
-
     JWT_SECRET: str = "dev-secret-change-me-32-bytes-minimum-1234"
     JWT_ALGORITHM: str = "HS256"
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 7
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-
-    EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 2
 
     AUTH_TOKEN_COOKIE: str = "auth_token"
 

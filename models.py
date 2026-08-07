@@ -8,7 +8,6 @@ from enum import Enum as PyEnum
 
 from sqlalchemy import (
     JSON,
-    Boolean,
     DateTime,
     Enum,
     ForeignKey,
@@ -50,9 +49,6 @@ class UserMixin:
     last_name: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(
         String(255), unique=True, index=True, nullable=False
-    )
-    is_email_verified: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="0", nullable=False
     )
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     session_id: Mapped[str | None] = mapped_column(

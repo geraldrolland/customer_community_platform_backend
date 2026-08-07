@@ -15,8 +15,6 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-from security import create_verification_token
-
 BASE = "http://127.0.0.1:8000"
 TS = int(time.time())
 PASSWORD = "SmokePass!123"
@@ -70,8 +68,9 @@ class Client:
         headers = dict(kwargs.pop("headers", {}))
         if method in ("POST", "PATCH", "PUT", "DELETE"):
             headers["x-csrf-token"] = self.csrf_token or ""
+        url = path if path.startswith("http") else BASE + path
         resp = self.session.request(
-            method, BASE + path, headers=headers, timeout=15, **kwargs
+            method, url, headers=headers, timeout=15, **kwargs
         )
         if self.csrf_token is None:
             self.csrf_token = self.session.cookies.get("csrf_token")
@@ -134,7 +133,6 @@ def main():
             "confirm_password": PASSWORD,
         },
     )
-    customer_id = reg_cust.json()["id"]
 
     reg_mgr = anon.post(
         "/api/auth/register/venue-manager",
@@ -147,13 +145,6 @@ def main():
             "confirm_password": PASSWORD,
         },
     )
-    manager_id = reg_mgr.json()["id"]
-
-    cust_token = create_verification_token(customer_id, "customer")
-    mgr_token = create_verification_token(manager_id, "venue_manager")
-
-    anon.get(f"/api/auth/verify-email?token={cust_token}", 200)
-    anon.get(f"/api/auth/verify-email?token={mgr_token}", 200)
 
     anon.post(
         "/api/auth/login/customer",
@@ -228,6 +219,7 @@ def main():
         "/api/venue/create", 201, json={**venue_payload, "name": "Smoke Venue B"}
     )
     venue_b_id = venue_b.json()["id"]
+    manager.patch(f"/api/venue/{venue_b_id}", 200, json={"status": "closed"})
     manager.delete(f"/api/venue/{venue_b_id}", 200)
 
     customer.get("/api/venue/all", 200)

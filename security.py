@@ -1,8 +1,8 @@
 """Security primitives: password hashing, JWT tokens, and cookie signing.
 
-Centralizes token creation/decoding (access, refresh, verification),
-signed-cookie serialization for the auth token, and CSRF token
-generation. All tokens are bound to the configured JWT secret.
+Centralizes token creation/decoding (access, refresh), signed-cookie
+serialization for the auth token, and CSRF token generation. All tokens
+are bound to the configured JWT secret.
 """
 import hashlib
 import secrets
@@ -61,24 +61,6 @@ def _create_token(payload: dict, expires_at: datetime) -> str:
     token_payload = {**payload, "exp": expires_at}
     return jwt.encode(
         token_payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM
-    )
-
-
-def create_verification_token(user_id: int, role: str) -> str:
-    """Create a short-lived JWT used to verify a user's email address.
-
-    Args:
-        user_id: ID of the user being verified.
-        role: User role (``"customer"`` or ``"venue_manager"``).
-
-    Returns:
-        A signed JWT valid for the configured verification window.
-    """
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES
-    )
-    return _create_token(
-        {"sub": str(user_id), "role": role}, expires_at
     )
 
 

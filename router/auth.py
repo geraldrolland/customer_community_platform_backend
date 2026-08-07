@@ -1,30 +1,24 @@
-"""Authentication endpoints: registration, email verification, login,
-profile management, and logout.
+"""Authentication endpoints: registration, login, profile management, and
+logout.
 
-Registration creates an unverified account and queues a verification
-email. Login sets the signed ``auth_token`` cookie and the readable
-``csrf_token`` cookie used by the CSRF middleware. All session handling
-is cookie-based.
+Login sets the signed ``auth_token`` cookie and the readable ``csrf_token``
+cookie used by the CSRF middleware. All session handling is cookie-based.
 """
 import secrets
 from typing import Union
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     HTTPException,
     Request,
     Response,
     status,
 )
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from starlette.background import BackgroundTask
 
 from core.settings import settings
 from database import get_db
-from email_service import send_verification_email
 from models import Customer, VenueManager
 from schemas import (
     CustomerCreate,
@@ -39,8 +33,6 @@ from security import (
     create_auth_token,
     create_csrf_token,
     create_refresh_token,
-    create_verification_token,
-    decode_token,
     hash_password,
     verify_password,
 )
@@ -50,7 +42,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 def _register_user(
     db: Session,
-    background_tasks: BackgroundTasks,
     model,
     first_name: str,
     middle_name: str | None,
@@ -58,11 +49,10 @@ def _register_user(
     email: str,
     password: str,
 ):
-    """Create a new unverified account and queue a verification email.
+    """Create a new user account.
 
     Args:
         db: Database session.
-        background_tasks: FastAPI background tasks (verification email).
         model: Either ``Customer`` or ``VenueManager``.
         first_name: User's first name.
         middle_name: User's middle name, if any.
@@ -94,12 +84,6 @@ def _register_user(
     db.add(user)
     db.commit()
     db.refresh(user)
-
-    token = create_verification_token(user.id, user.role)
-    verification_url = f"{settings.EMAIL_VERIFICATION_BASE_URL}?token={token}"
-    background_tasks.add_task(
-        send_verification_email, email, first_name, verification_url
-    )
 
     return user
 
@@ -138,7 +122,6 @@ def _set_auth_cookies(response: Response, session_id: str, user):
 def _login_user(
     db: Session,
     response: Response,
-    background_tasks: BackgroundTasks,
     model,
     email: str,
     password: str,
@@ -148,7 +131,6 @@ def _login_user(
     Args:
         db: Database session.
         response: Response to attach the auth cookies to.
-        background_tasks: FastAPI background tasks (re-sent verification).
         model: Either ``Customer`` or ``VenueManager``.
         email: User's email.
         password: Plaintext password.
@@ -157,8 +139,7 @@ def _login_user(
         The authenticated user row.
 
     Raises:
-        HTTPException: 400 on unknown email or wrong password; 403 with a
-            re-sent verification link when the email is unverified.
+        HTTPException: 400 on unknown email or wrong password.
     """
     email = email.lower()
     user = db.query(model).filter(model.email == email).first()
@@ -186,17 +167,6 @@ def _login_user(
             detail="Incorrect password",
         )
 
-    if not user.is_email_verified:
-        token = create_verification_token(user.id, user.role)
-        verification_url = f"{settings.EMAIL_VERIFICATION_BASE_URL}?token={token}"
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content={"detail": "Email not verified - verification link sent"},
-            background=BackgroundTask(
-                send_verification_email, email, user.first_name, verification_url
-            ),
-        )
-
     user.session_id = secrets.token_urlsafe(32)
     db.commit()
 
@@ -212,14 +182,12 @@ def _login_user(
 )
 def register_customer(
     payload: CustomerCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """Register a new customer account.
 
     Args:
         payload: Customer registration data.
-        background_tasks: FastAPI background tasks.
         db: Database session.
 
     Returns:
@@ -230,7 +198,6 @@ def register_customer(
     """
     return _register_user(
         db,
-        background_tasks,
         Customer,
         payload.first_name,
         payload.middle_name,
@@ -247,14 +214,12 @@ def register_customer(
 )
 def register_venue_manager(
     payload: VenueManagerCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """Register a new venue-manager account.
 
     Args:
         payload: Venue-manager registration data.
-        background_tasks: FastAPI background tasks.
         db: Database session.
 
     Returns:
@@ -265,7 +230,6 @@ def register_venue_manager(
     """
     return _register_user(
         db,
-        background_tasks,
         VenueManager,
         payload.first_name,
         payload.middle_name,
@@ -283,7 +247,6 @@ def register_venue_manager(
 def login_customer(
     payload: LoginRequest,
     response: Response,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """Log in a customer and set the auth + CSRF cookies.
@@ -291,14 +254,13 @@ def login_customer(
     Args:
         payload: Login credentials.
         response: Response receiving the session cookies.
-        background_tasks: FastAPI background tasks.
         db: Database session.
 
     Returns:
         CustomerOut: The authenticated customer.
     """
     return _login_user(
-        db, response, background_tasks, Customer, payload.email, payload.password
+        db, response, Customer, payload.email, payload.password
     )
 
 
@@ -310,7 +272,6 @@ def login_customer(
 def login_venue_manager(
     payload: LoginRequest,
     response: Response,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """Log in a venue manager and set the auth + CSRF cookies.
@@ -318,7 +279,6 @@ def login_venue_manager(
     Args:
         payload: Login credentials.
         response: Response receiving the session cookies.
-        background_tasks: FastAPI background tasks.
         db: Database session.
 
     Returns:
@@ -327,59 +287,10 @@ def login_venue_manager(
     return _login_user(
         db,
         response,
-        background_tasks,
         VenueManager,
         payload.email,
         payload.password,
     )
-
-
-@router.get("/verify-email", status_code=status.HTTP_200_OK)
-def verify_email(token: str, db: Session = Depends(get_db)):
-    """Mark a user's email as verified using the emailed token.
-
-    Args:
-        token: Signed verification JWT.
-        db: Database session.
-
-    Returns:
-        dict: Success message.
-
-    Raises:
-        HTTPException: 400 for an invalid token; 404 if the user does not
-            exist.
-    """
-    try:
-        payload = decode_token(token)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid token",
-        )
-
-    user_id = int(payload.get("sub"))
-    role = payload.get("role")
-
-    if role == "venue_manager":
-        user = db.query(VenueManager).filter(VenueManager.id == user_id).first()
-    elif role == "customer":
-        user = db.query(Customer).filter(Customer.id == user_id).first()
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid token",
-        )
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    user.is_email_verified = True
-    db.commit()
-
-    return {"message": "Email verified successfully"}
 
 
 @router.get("/me", response_model=Union[CustomerOut, VenueManagerOut])
