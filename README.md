@@ -30,6 +30,8 @@ session authentication, CSRF protection, and an in-memory response cache.
 
 - **Role-based accounts** — customers and venue managers with email verification
 - **Venue management** — venue managers create, update, and delete venues
+- **Venue lifecycle** — setting a venue's status to `closed` rejects every
+  event assigned to it and closes their ballots
 - **Event proposals** — customers propose events at venues (title, date, target venue)
 - **Moderation flow** — venue managers approve or reject pending proposals
 - **Community voting** — customers vote on pending events; ballots close when an
@@ -281,7 +283,7 @@ Base URL: `http://localhost:8000` — interactive docs at `/docs`.
 | POST   | `/api/venue/create`         | venue_manager | Create a venue                       |
 | GET    | `/api/venue/me/all`         | venue_manager | List own venues                      |
 | GET    | `/api/venue/me/{id}`        | venue_manager | Fetch own venue                      |
-| PATCH  | `/api/venue/{id}`           | venue_manager | Update own venue                     |
+| PATCH  | `/api/venue/{id}`           | venue_manager | Update own venue; setting status to `closed` rejects all its events |
 | DELETE | `/api/venue/{id}`           | venue_manager | Delete own venue                     |
 | GET    | `/api/venue/all`            | customer      | Browse venue catalog                 |
 | GET    | `/api/venue/{id}`           | customer      | Fetch a venue                        |
