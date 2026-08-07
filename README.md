@@ -22,6 +22,7 @@ session authentication, CSRF protection, and an in-memory response cache.
 - [Security Model](#security-model)
 - [Caching](#caching)
 - [Testing](#testing)
+- [Design Decisions, Assumptions & Next Steps](#design-decisions-assumptions--next-steps)
 - [Docker Production Notes](#docker-production-notes)
 
 ---
@@ -354,6 +355,84 @@ python smoke_test.py
 ```
 
 Expected output ends with `42/42 checks passed` (exit code 0).
+
+---
+
+## Design Decisions, Assumptions & Next Steps
+
+### Assumptions made about ambiguous requirements
+
+- **Submit-to-queue is automatic.** The spec allowed an explicit "submit"
+  action or automatic queueing. I chose automatic: an event enters the
+  target venue's approval queue the moment it is created (`POST
+  /api/event/create` creates it as `pending`).
+- **Rejected events are terminal; no resubmission.** The spec says to
+  "decide and document" resubmission. The chosen state machine is
+  one-way: `pending -> approved | rejected`. Rejected events cannot be
+  re-edited or re-submitted; a customer can propose a brand-new event
+  instead. Update and delete are only allowed while `pending`.
+- **Voting recommends; managers decide.** Upvotes drive the
+  approval-queue ordering but never auto-approve. Approval/rejection is
+  always an explicit manager action (`PATCH /api/event/{id}/status`).
+- **Booking availability.** Events may only target venues whose status is
+  `available`. A venue set to `closed` rejects all its events and closes
+  their ballots; only `closed` venues can be deleted.
+- **Voting lifecycle.** A vote may be cast once per customer per pending
+  future event (a second vote is rejected with 400); it may be removed
+  while its ballot is open. Ballots close when an event is
+  approved/rejected or its proposed date passes.
+
+### Tradeoffs made
+
+- **SQLite + JSON columns.** Nested venue data (amenities, accessibility,
+  contact, parking, hours) lives in JSON columns instead of relational
+  tables. Simple and fast to build, but these fields are not
+  queryable/indexable - fine for now, wrong for large-scale reporting.
+- **No migration tool.** Schema is created with `create_all` and there is
+  no Alembic; a column change means recreating the DB. Acceptable in dev,
+  a liability in production.
+- **In-memory TTL cache (`cachetools`).** 60-second cache on hot shared
+  reads, invalidated by key prefix on every write. Cheap and effective
+  for one process, but per-process (not shared across uvicorn workers),
+  lost on restart, and can serve up to 60s of stale data.
+- **Denormalized `vote_count`.** Incremented/decremented in application
+  code rather than computed with `COUNT()`. Fast reads, but it can drift
+  under concurrency (SQLite's single writer reduces - not eliminates -
+  this risk).
+- **Single-signed-cookie auth.** Access + refresh JWTs packaged into one
+  HttpOnly/SameSite=Lax cookie with per-request session rotation and a
+  60s grace window so parallel requests do not race into 401s. Robust
+  but adds moving parts; `secure` is disabled for local HTTP.
+- **Naive-UTC datetimes.** Proposed dates are stored and compared as
+  naive UTC (`func.now()`), avoiding tz conversions in SQLite but risking
+  drift around DST if a client sends local wall times.
+- **Bare-array pagination.** List endpoints accept `limit`/`page_num` but
+  return only the page as an array - no total count or cursor - so
+  consumers cannot render real pagination controls.
+- **File-based media storage.** Uploads are written to a local `media/`
+  directory served via `StaticFiles`; not object storage, so images do
+  not survive a node replacement.
+
+### What I'd do next with more time
+
+- Add **Alembic migrations** so schema changes are versioned and
+  reversible.
+- Switch the cache to **Redis** (or document per-worker behavior) and
+  make the TTL configurable.
+- Make `vote_count` a live aggregate (`SELECT COUNT(*)`) or guard it
+  with `SELECT ... FOR UPDATE`; replace custom session rotation with a
+  proper refresh-token revocation store.
+- Move to **PostgreSQL** with real transaction isolation.
+- Add **pytest** coverage for routers/middleware (today only a single
+  end-to-end smoke test), plus property tests for the date/status
+  validators.
+- Harden auth: enforce a **password policy**, add login rate-limiting /
+  lockout, and revoke rotated sessions so a stolen cookie cannot be
+  replayed.
+- Return **pagination metadata** (`total`, `page`, `next`) consistently.
+- Move media to **object storage** and serve CDN URLs.
+- Centralize the **role/permission matrix** (currently duplicated between
+  `AuthMiddleware.PROTECTED_ROUTES` and each `RequirePermission`).
 
 ---
 
