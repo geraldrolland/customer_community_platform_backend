@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from cache import cache_get, cache_set, invalidate
 from database import get_db
 from dependencies import RequirePermission
-from models import Event, EventStatus, Roles, Venue, VoteStatus
+from models import Event, EventStatus, Roles, Venue, VenueStatus, VoteStatus
 from schemas import EventCreate, EventOut, EventUpdate
 
 router = APIRouter(prefix="/api/event", tags=["event"])
@@ -39,12 +39,20 @@ def create_event(payload: EventCreate, request: Request, db: Session = Depends(g
         EventOut: The created event (status ``pending``).
 
     Raises:
-        HTTPException: 404 when the target venue does not exist.
+        HTTPException: 404 when the target venue does not exist; 400 when
+            the target venue is not available for booking.
     """
-    if not db.query(Venue).filter(Venue.id == payload.target_venue_id).first():
+    venue = db.query(Venue).filter(Venue.id == payload.target_venue_id).first()
+    if not venue:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Venue not found",
+        )
+
+    if venue.status != VenueStatus.available:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only venues with status 'available' can be assigned to events",
         )
 
     event = Event(

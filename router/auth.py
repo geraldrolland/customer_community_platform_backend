@@ -18,7 +18,9 @@ from fastapi import (
     Response,
     status,
 )
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from core.settings import settings
 from database import get_db
@@ -75,9 +77,7 @@ def _register_user(
         HTTPException: 400 if the email is already registered.
     """
     email = email.lower()
-    if db.query(Customer).filter(Customer.email == email).first() or db.query(
-        VenueManager
-    ).filter(VenueManager.email == email).first():
+    if db.query(model).filter(model.email == email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
@@ -112,8 +112,8 @@ def _set_auth_cookies(response: Response, session_id: str, user):
         session_id: Current server-side session id.
         user: The authenticated user (customer or venue manager).
     """
-    access_token = create_access_token(session_id, user.id, user.role)
-    refresh_token = create_refresh_token(session_id, user.id, user.role)
+    access_token = create_access_token(session_id, user.role)
+    refresh_token = create_refresh_token(session_id, user.role)
     auth_token = create_auth_token(access_token, refresh_token)
     csrf_token = create_csrf_token()
 
@@ -163,6 +163,18 @@ def _login_user(
     email = email.lower()
     user = db.query(model).filter(model.email == email).first()
     if not user:
+        other_model = VenueManager if model is Customer else Customer
+        requested_role = "customer" if model is Customer else "venue manager"
+        other_role = "venue manager" if model is Customer else "customer"
+        if db.query(other_model).filter(other_model.email == email).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"No {requested_role} account exists for this email — it "
+                    f"belongs to a {other_role} account; use the {other_role} "
+                    "login instead"
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email not found",
@@ -177,12 +189,12 @@ def _login_user(
     if not user.is_email_verified:
         token = create_verification_token(user.id, user.role)
         verification_url = f"{settings.EMAIL_VERIFICATION_BASE_URL}?token={token}"
-        background_tasks.add_task(
-            send_verification_email, email, user.first_name, verification_url
-        )
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email not verified - verification link sent",
+            content={"detail": "Email not verified - verification link sent"},
+            background=BackgroundTask(
+                send_verification_email, email, user.first_name, verification_url
+            ),
         )
 
     user.session_id = secrets.token_urlsafe(32)

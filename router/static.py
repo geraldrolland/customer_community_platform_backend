@@ -7,7 +7,7 @@ URLs. Requires a venue-manager session.
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from dependencies import RequirePermission
 from models import Roles
@@ -22,15 +22,16 @@ MAX_IMAGES = 5
     "/upload",
     dependencies=[Depends(RequirePermission(roles=[Roles.VENUE_MANAGER]))],
 )
-async def upload_images(images: list[UploadFile] = File(...)):
-    """Upload one or more venue images and return their static URLs.
+async def upload_images(request: Request, images: list[UploadFile] = File(...)):
+    """Upload one or more venue images and return their absolute static URLs.
 
     Args:
         images: Multipart files, each with a jpg/jpeg/png extension and
             non-empty content. At most ``MAX_IMAGES`` allowed.
+        request: Incoming request, used to build absolute media URLs.
 
     Returns:
-        list[str]: Static media URLs for the stored files.
+        list[str]: Absolute static media URLs for the stored files.
 
     Raises:
         HTTPException: 400 when too many files are sent, an extension is
@@ -62,6 +63,6 @@ async def upload_images(images: list[UploadFile] = File(...)):
             )
 
         (MEDIA_DIR / file_name).write_bytes(content)
-        image_urls.append(f"/static/media/{file_name}")
+        image_urls.append(f"{request.base_url}static/media/{file_name}")
 
     return image_urls

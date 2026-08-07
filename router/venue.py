@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from cache import cache_get, cache_set, invalidate
 from database import get_db
 from dependencies import RequirePermission
-from models import Venue, Roles
+from models import Venue, VenueStatus, Roles
 from router.static import MEDIA_DIR
 from schemas import VenueCreate, VenueOut, VenueUpdate
 
@@ -220,7 +220,9 @@ def update_venue(
 ):
     """Update a venue owned by the venue manager.
 
-    Replacing the image list deletes the previously uploaded media files.
+    Replacing the image list deletes the previously uploaded media files
+    that are no longer referenced; images kept in the new list stay on
+    disk.
 
     Args:
         venue_id: Venue to update.
@@ -249,9 +251,11 @@ def update_venue(
         )
 
     if payload.images is not None:
+        new_file_names = {str(img).rsplit("/", 1)[-1] for img in payload.images}
         for image_url in venue.images:
             file_name = image_url.rsplit("/", 1)[-1]
-            (MEDIA_DIR / file_name).unlink(missing_ok=True)
+            if file_name not in new_file_names:
+                (MEDIA_DIR / file_name).unlink(missing_ok=True)
         venue.images = [str(img) for img in payload.images]
 
     for field, value in payload.model_dump(exclude={"images"}).items():
@@ -297,6 +301,12 @@ def delete_venue(venue_id: int, request: Request, db: Session = Depends(get_db))
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permission denied",
+        )
+
+    if venue.status != VenueStatus.closed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Venue can only be deleted when its status is closed",
         )
 
     for image_url in venue.images:

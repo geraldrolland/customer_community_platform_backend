@@ -5,10 +5,32 @@ profile updates), the venue/event/vote models, and the curated venue
 purpose-to-type mapping used to validate venue submissions.
 """
 from datetime import datetime
+import re
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, model_validator
 
 from models import EventStatus, VenuePurpose, VenueStatus, VenueType, VoteStatus
+
+WEBSITE_URL_PATTERN = re.compile(
+    r"^https?://"
+    r"(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+"
+    r"[a-zA-Z]{2,}"
+    r"(?::\d{1,5})?"
+    r"(?:/[^\s]*)?$"
+)
+
+
+def validate_website(website: str) -> None:
+    """Reject website values that do not look like an absolute http(s) URL.
+
+    Args:
+        website: Website value from a venue payload.
+
+    Raises:
+        ValueError: When the value does not match the website URL pattern.
+    """
+    if not WEBSITE_URL_PATTERN.match(website):
+        raise ValueError(f"Invalid website URL: {website}")
 
 
 Amenities = [
@@ -332,12 +354,19 @@ class VenueCreate(BaseModel):
     amenities: list[str]
     accessibility: Accessibilty
     contact: Contact
-    website: HttpUrl | None = None
+    website: str | None = None
     rental_price: int = Field(gt=0)
     status: VenueStatus = VenueStatus.available
     images: list[HttpUrl]
     parking_availability: ParkingAvailability = ParkingAvailability(available=False)
     operating_hours: OperatingHours
+
+    @model_validator(mode="after")
+    def check_website(self):
+        """Reject website values that are not valid absolute URLs."""
+        if self.website is not None:
+            validate_website(self.website)
+        return self
 
     @model_validator(mode="after")
     def check_amenities(self):
@@ -389,12 +418,19 @@ class VenueUpdate(BaseModel):
     amenities: list[str] | None = None
     accessibility: Accessibilty | None = None
     contact: Contact | None = None
-    website: HttpUrl | None = None
+    website: str | None = None
     rental_price: int | None = None
     status: VenueStatus | None = None
     images: list[HttpUrl] | None = None
     parking_availability: ParkingAvailability | None = None
     operating_hours: OperatingHours | None = None
+
+    @model_validator(mode="after")
+    def check_website(self):
+        """Reject website values that are not valid absolute URLs."""
+        if self.website is not None:
+            validate_website(self.website)
+        return self
 
     @model_validator(mode="after")
     def check_amenities(self):
@@ -454,7 +490,7 @@ class VenueOut(BaseModel):
     amenities: list[str]
     accessibility: Accessibilty
     contact: Contact
-    website: HttpUrl | None
+    website: str | None
     rental_price: int
     status: VenueStatus
     images: list[HttpUrl]

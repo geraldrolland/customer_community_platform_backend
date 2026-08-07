@@ -82,12 +82,11 @@ def create_verification_token(user_id: int, role: str) -> str:
     )
 
 
-def create_access_token(session_id: str, user_id: int, role: str) -> str:
+def create_access_token(session_id: str, role: str) -> str:
     """Create a short-lived access JWT bound to a session.
 
     Args:
         session_id: Current server-side session id for rotation checks.
-        user_id: ID of the authenticated user.
         role: User role.
 
     Returns:
@@ -97,17 +96,16 @@ def create_access_token(session_id: str, user_id: int, role: str) -> str:
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
     return _create_token(
-        {"sub": str(user_id), "role": role, "session_id": session_id},
+        {"role": role, "session_id": session_id},
         expires_at,
     )
 
 
-def create_refresh_token(session_id: str, user_id: int, role: str) -> str:
+def create_refresh_token(session_id: str, role: str) -> str:
     """Create a long-lived refresh JWT bound to a session.
 
     Args:
         session_id: Current server-side session id for rotation checks.
-        user_id: ID of the authenticated user.
         role: User role.
 
     Returns:
@@ -117,7 +115,7 @@ def create_refresh_token(session_id: str, user_id: int, role: str) -> str:
         days=settings.REFRESH_TOKEN_EXPIRE_DAYS
     )
     return _create_token(
-        {"sub": str(user_id), "role": role, "session_id": session_id},
+        {"role": role, "session_id": session_id},
         expires_at,
     )
 

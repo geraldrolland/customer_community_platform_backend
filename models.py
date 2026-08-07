@@ -213,6 +213,7 @@ class VenueStatus(str, PyEnum):
     reserved = "reserved"
     booked = "booked"
     under_maintenance = "under_maintenance"
+    closed = "closed"
 
 
 def _enum_values(enum_class):
