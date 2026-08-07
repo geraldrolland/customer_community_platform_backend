@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from cache import cache_get, cache_set, invalidate
 from database import get_db
 from dependencies import RequirePermission
-from models import Venue, VenueStatus, Roles
+from models import Event, EventStatus, Venue, VenueStatus, Roles, VoteStatus
 from router.static import MEDIA_DIR
 from schemas import VenueCreate, VenueOut, VenueUpdate
 
@@ -224,6 +224,9 @@ def update_venue(
     that are no longer referenced; images kept in the new list stay on
     disk.
 
+    Setting the venue status to ``closed`` rejects every event assigned
+    to the venue and closes their ballots.
+
     Args:
         venue_id: Venue to update.
         payload: Fields to change (all optional).
@@ -261,6 +264,17 @@ def update_venue(
     for field, value in payload.model_dump(exclude={"images"}).items():
         if value is not None:
             setattr(venue, field, value)
+
+    if venue.status == VenueStatus.closed:
+        events = (
+            db.query(Event)
+            .filter(Event.target_venue_id == venue.id)
+            .all()
+        )
+        for event in events:
+            event.status = EventStatus.rejected
+            for vote in event.votes:
+                vote.status = VoteStatus.ballot_close
 
     db.commit()
     db.refresh(venue)
